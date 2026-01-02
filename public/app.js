@@ -1,11 +1,14 @@
 // Global state
 var authToken = localStorage.getItem('authToken') || '';
 var currentUser = null;
+var inbounds = [];
+var userConfigs = {};
 
 // DOM Elements
 var loadingSection = document.getElementById('loadingSection');
 var authSection = document.getElementById('authSection');
 var dashboardSection = document.getElementById('dashboardSection');
+var configModal = document.getElementById('configModal');
 
 // Initialize app on load
 document.addEventListener('DOMContentLoaded', initializeApp);
@@ -24,6 +27,14 @@ document.getElementById('registerForm').addEventListener('submit', handleRegiste
 document.getElementById('logoutBtn').addEventListener('click', handleLogout);
 document.getElementById('getConfigBtn').addEventListener('click', handleGetConfig);
 document.getElementById('copyConfigBtn').addEventListener('click', copyConfig);
+document.getElementById('closeModalBtn').addEventListener('click', closeModal);
+
+// Close modal on background click
+configModal.addEventListener('click', function(e) {
+    if (e.target === configModal) {
+        closeModal();
+    }
+});
 
 // Initialize application
 function initializeApp() {
@@ -46,10 +57,10 @@ function checkSession() {
         if (data.success) {
             currentUser = {
                 username: data.username,
-                hasConfig: data.hasConfig,
-                configData: data.configData
+                configs: data.configs || {}
             };
-            showDashboard();
+            userConfigs = data.configs || {};
+            loadInboundsAndShowDashboard();
         } else {
             localStorage.removeItem('authToken');
             authToken = '';
@@ -60,6 +71,58 @@ function checkSession() {
         console.error('Check session error:', error);
         showAuthSection();
     });
+}
+
+// Load inbounds then show dashboard
+function loadInboundsAndShowDashboard() {
+    fetch('/api/inbounds', {
+        headers: { 'Authorization': authToken }
+    })
+    .then(function(res) { return res.json(); })
+    .then(function(data) {
+        if (data.success) {
+            inbounds = data.inbounds;
+            populateInboundSelect();
+        }
+        showDashboard();
+    })
+    .catch(function(error) {
+        console.error('Load inbounds error:', error);
+        showDashboard();
+    });
+}
+
+// Populate inbound select dropdown
+function populateInboundSelect() {
+    var select = document.getElementById('inboundSelect');
+    select.innerHTML = '';
+
+    if (inbounds.length === 0) {
+        select.innerHTML = '<option value="">هیچ Inbound یافت نشد</option>';
+        return;
+    }
+
+    // Add placeholder
+    var placeholder = document.createElement('option');
+    placeholder.value = '';
+    placeholder.textContent = 'یک Inbound انتخاب کنید...';
+    select.appendChild(placeholder);
+
+    // Add inbounds
+    for (var i = 0; i < inbounds.length; i++) {
+        var inbound = inbounds[i];
+        var option = document.createElement('option');
+        option.value = inbound.id;
+
+        // Check if user already has config for this inbound
+        var hasConfig = userConfigs && userConfigs[inbound.id];
+        var statusText = hasConfig ? ' (دریافت شده)' : '';
+
+        option.textContent = inbound.remark + ' (' + inbound.protocol.toUpperCase() + ') - Port: ' + inbound.port + statusText;
+        option.disabled = hasConfig;
+
+        select.appendChild(option);
+    }
 }
 
 // Switch between login and register tabs
@@ -102,10 +165,10 @@ function handleLogin(e) {
             localStorage.setItem('authToken', authToken);
             currentUser = {
                 username: username,
-                hasConfig: data.hasConfig,
-                configData: data.configData
+                configs: data.configs || {}
             };
-            showDashboard();
+            userConfigs = data.configs || {};
+            loadInboundsAndShowDashboard();
         } else {
             showError('loginError', data.message);
         }
@@ -142,10 +205,10 @@ function handleRegister(e) {
             localStorage.setItem('authToken', authToken);
             currentUser = {
                 username: username,
-                hasConfig: false,
-                configData: null
+                configs: {}
             };
-            showDashboard();
+            userConfigs = {};
+            loadInboundsAndShowDashboard();
         } else {
             showError('registerError', data.message);
         }
@@ -165,12 +228,20 @@ function handleLogout() {
         localStorage.removeItem('authToken');
         authToken = '';
         currentUser = null;
+        userConfigs = {};
         showAuthSection();
     });
 }
 
 // Handle get config
 function handleGetConfig() {
+    var inboundId = document.getElementById('inboundSelect').value;
+
+    if (!inboundId) {
+        showError('getConfigError', 'لطفاً یک Inbound انتخاب کنید');
+        return;
+    }
+
     var btn = document.getElementById('getConfigBtn');
     btn.disabled = true;
     btn.textContent = 'در حال ایجاد...';
@@ -182,7 +253,8 @@ function handleGetConfig() {
         headers: {
             'Authorization': authToken,
             'Content-Type': 'application/json'
-        }
+        },
+        body: JSON.stringify({ inboundId: parseInt(inboundId) })
     })
     .then(function(res) { return res.json(); })
     .then(function(data) {
@@ -190,15 +262,17 @@ function handleGetConfig() {
         btn.textContent = 'دریافت کانفیگ';
 
         if (data.success) {
-            currentUser.hasConfig = true;
-            currentUser.configData = data.configData;
-            showConfigSection(data.configData);
+            userConfigs[inboundId] = data.configData;
+            populateInboundSelect();
+            renderExistingConfigs();
+            showConfigModal(data.configData);
         } else {
             if (data.configData) {
-                // User already has config
-                currentUser.hasConfig = true;
-                currentUser.configData = data.configData;
-                showConfigSection(data.configData);
+                // User already has config for this inbound
+                userConfigs[inboundId] = data.configData;
+                populateInboundSelect();
+                renderExistingConfigs();
+                showConfigModal(data.configData);
             } else {
                 showError('getConfigError', data.message);
             }
@@ -211,12 +285,46 @@ function handleGetConfig() {
     });
 }
 
-// Show config section
-function showConfigSection(configData) {
-    document.getElementById('getConfigSection').classList.add('hidden');
-    document.getElementById('showConfigSection').classList.remove('hidden');
+// Render existing configs list
+function renderExistingConfigs() {
+    var container = document.getElementById('existingConfigs');
+    var list = document.getElementById('configsList');
 
+    var configKeys = Object.keys(userConfigs);
+
+    if (configKeys.length === 0) {
+        container.classList.add('hidden');
+        return;
+    }
+
+    container.classList.remove('hidden');
+    list.innerHTML = '';
+
+    for (var i = 0; i < configKeys.length; i++) {
+        var key = configKeys[i];
+        var config = userConfigs[key];
+
+        var item = document.createElement('div');
+        item.className = 'config-item';
+        item.innerHTML = '<div class="config-item-info">' +
+            '<span class="config-name">' + (config.inboundName || 'Inbound ' + key) + '</span>' +
+            '<span class="config-protocol">' + config.protocol.toUpperCase() + '</span>' +
+            '</div>' +
+            '<button class="btn btn-primary btn-sm" data-config-id="' + key + '">مشاهده</button>';
+
+        item.querySelector('button').addEventListener('click', function() {
+            var configId = this.getAttribute('data-config-id');
+            showConfigModal(userConfigs[configId]);
+        });
+
+        list.appendChild(item);
+    }
+}
+
+// Show config modal
+function showConfigModal(configData) {
     document.getElementById('configProtocol').textContent = configData.protocol.toUpperCase();
+    document.getElementById('configInbound').textContent = configData.inboundName || '-';
     document.getElementById('configExpiry').textContent = configData.expiryDate;
     document.getElementById('configTraffic').textContent = configData.traffic;
     document.getElementById('configLink').value = configData.link;
@@ -235,6 +343,13 @@ function showConfigSection(configData) {
             correctLevel: QRCode.CorrectLevel.M
         });
     }
+
+    configModal.classList.remove('hidden');
+}
+
+// Close modal
+function closeModal() {
+    configModal.classList.add('hidden');
 }
 
 // Copy config to clipboard
@@ -275,13 +390,7 @@ function showDashboard() {
     dashboardSection.classList.remove('hidden');
 
     document.getElementById('usernameDisplay').textContent = currentUser.username;
-
-    if (currentUser.hasConfig && currentUser.configData) {
-        showConfigSection(currentUser.configData);
-    } else {
-        document.getElementById('getConfigSection').classList.remove('hidden');
-        document.getElementById('showConfigSection').classList.add('hidden');
-    }
+    renderExistingConfigs();
 }
 
 function showError(elementId, message) {

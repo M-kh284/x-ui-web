@@ -55,8 +55,9 @@ let userSessions = {};
 // ==================== User Authentication ====================
 
 // Register new user
-app.post('/api/user/register', (req, res) => {
-    const { username, password } = req.body;
+app.post('/api/user/register', function(req, res) {
+    var username = req.body.username;
+    var password = req.body.password;
 
     if (!username || !password) {
         return res.json({ success: false, message: 'نام کاربری و رمز عبور الزامی است' });
@@ -70,66 +71,72 @@ app.post('/api/user/register', (req, res) => {
         return res.json({ success: false, message: 'رمز عبور باید حداقل 4 کاراکتر باشد' });
     }
 
-    const users = loadUsers();
+    var users = loadUsers();
 
     if (users[username]) {
         return res.json({ success: false, message: 'این نام کاربری قبلاً ثبت شده' });
     }
 
-    // Create new user
+    // Create new user with configs array (one per inbound)
     users[username] = {
         password: hashPassword(password),
         createdAt: Date.now(),
-        hasConfig: false,
-        configData: null
+        configs: {} // Object with inboundId as key
     };
 
     saveUsers(users);
 
-    // Auto login after register
-    const token = generateToken();
+    var token = generateToken();
     userSessions[token] = username;
 
     res.json({ success: true, token: token, message: 'ثبت‌نام موفق' });
 });
 
 // Login user
-app.post('/api/user/login', (req, res) => {
-    const { username, password } = req.body;
+app.post('/api/user/login', function(req, res) {
+    var username = req.body.username;
+    var password = req.body.password;
 
     if (!username || !password) {
         return res.json({ success: false, message: 'نام کاربری و رمز عبور الزامی است' });
     }
 
-    const users = loadUsers();
-    const user = users[username];
+    var users = loadUsers();
+    var user = users[username];
 
     if (!user || user.password !== hashPassword(password)) {
         return res.json({ success: false, message: 'نام کاربری یا رمز عبور اشتباه است' });
     }
 
-    const token = generateToken();
+    var token = generateToken();
     userSessions[token] = username;
+
+    // Migration: convert old format to new
+    if (user.hasConfig && user.configData && !user.configs) {
+        user.configs = { '1': user.configData };
+        delete user.hasConfig;
+        delete user.configData;
+        saveUsers(users);
+    }
 
     res.json({
         success: true,
         token: token,
-        hasConfig: user.hasConfig,
-        configData: user.configData
+        configs: user.configs || {}
     });
 });
 
 // Check user session
-app.get('/api/user/check', (req, res) => {
-    const token = req.headers['authorization'];
+app.get('/api/user/check', function(req, res) {
+    var token = req.headers['authorization'];
 
     if (!token || !userSessions[token]) {
         return res.json({ success: false, message: 'لطفاً وارد شوید' });
     }
 
-    const username = userSessions[token];
-    const users = loadUsers();
-    const user = users[username];
+    var username = userSessions[token];
+    var users = loadUsers();
+    var user = users[username];
 
     if (!user) {
         delete userSessions[token];
@@ -139,14 +146,13 @@ app.get('/api/user/check', (req, res) => {
     res.json({
         success: true,
         username: username,
-        hasConfig: user.hasConfig,
-        configData: user.configData
+        configs: user.configs || {}
     });
 });
 
 // Logout
-app.post('/api/user/logout', (req, res) => {
-    const token = req.headers['authorization'];
+app.post('/api/user/logout', function(req, res) {
+    var token = req.headers['authorization'];
     if (token) {
         delete userSessions[token];
     }
@@ -155,21 +161,20 @@ app.post('/api/user/logout', (req, res) => {
 
 // ==================== X-UI Panel Functions ====================
 
-// Login to X-UI panel (internal function)
 async function loginToPanel() {
     try {
-        const formData = new URLSearchParams();
+        var formData = new URLSearchParams();
         formData.append('username', config.PANEL_USERNAME);
         formData.append('password', config.PANEL_PASSWORD);
 
-        const response = await axios.post(config.PANEL_URL + '/login', formData.toString(), {
+        var response = await axios.post(config.PANEL_URL + '/login', formData.toString(), {
             headers: {
                 'Content-Type': 'application/x-www-form-urlencoded'
             }
         });
 
         if (response.data.success) {
-            const cookies = response.headers['set-cookie'];
+            var cookies = response.headers['set-cookie'];
             sessionCookie = cookies ? cookies.join('; ') : '';
             isLoggedIn = true;
             console.log('Logged in to X-UI panel successfully');
@@ -191,48 +196,105 @@ async function ensureLoggedIn() {
     return true;
 }
 
-// ==================== Config Creation ====================
+// ==================== Inbounds API ====================
 
-// Create config for user (one-time only)
-app.post('/api/create-config', async (req, res) => {
-    const token = req.headers['authorization'];
+// Get list of inbounds
+app.get('/api/inbounds', async function(req, res) {
+    var token = req.headers['authorization'];
 
     if (!token || !userSessions[token]) {
         return res.json({ success: false, message: 'لطفاً وارد شوید' });
     }
 
-    const username = userSessions[token];
-    const users = loadUsers();
-    const user = users[username];
+    try {
+        await ensureLoggedIn();
+
+        var response = await axios.get(config.PANEL_URL + '/panel/api/inbounds/list', {
+            headers: { 'Cookie': sessionCookie }
+        });
+
+        if (response.data.success && response.data.obj) {
+            var inbounds = response.data.obj.map(function(inbound) {
+                return {
+                    id: inbound.id,
+                    remark: inbound.remark,
+                    protocol: inbound.protocol,
+                    port: inbound.port
+                };
+            });
+            res.json({ success: true, inbounds: inbounds });
+        } else {
+            res.json({ success: false, message: 'خطا در دریافت لیست Inbound ها' });
+        }
+    } catch (error) {
+        console.error('Get inbounds error:', error.message);
+        res.json({ success: false, message: error.message });
+    }
+});
+
+// ==================== Config Creation ====================
+
+// Create config for user in specific inbound
+app.post('/api/create-config', async function(req, res) {
+    var token = req.headers['authorization'];
+    var inboundId = req.body.inboundId;
+
+    if (!token || !userSessions[token]) {
+        return res.json({ success: false, message: 'لطفاً وارد شوید' });
+    }
+
+    if (!inboundId) {
+        return res.json({ success: false, message: 'لطفاً یک Inbound انتخاب کنید' });
+    }
+
+    var username = userSessions[token];
+    var users = loadUsers();
+    var user = users[username];
 
     if (!user) {
         return res.json({ success: false, message: 'کاربر یافت نشد' });
     }
 
-    if (user.hasConfig) {
+    // Initialize configs if not exists
+    if (!user.configs) {
+        user.configs = {};
+    }
+
+    // Check if user already has config for this inbound
+    if (user.configs[inboundId]) {
         return res.json({
             success: false,
-            message: 'شما قبلاً کانفیگ دریافت کرده‌اید',
-            configData: user.configData
+            message: 'شما قبلاً در این Inbound کانفیگ دریافت کرده‌اید',
+            configData: user.configs[inboundId]
         });
     }
 
     try {
         await ensureLoggedIn();
 
-        // Get first available inbound
-        const inboundsResponse = await axios.get(config.PANEL_URL + '/panel/api/inbounds/list', {
+        // Get inbound details
+        var inboundsResponse = await axios.get(config.PANEL_URL + '/panel/api/inbounds/list', {
             headers: { 'Cookie': sessionCookie }
         });
 
-        if (!inboundsResponse.data.success || !inboundsResponse.data.obj || inboundsResponse.data.obj.length === 0) {
-            return res.json({ success: false, message: 'هیچ Inbound یافت نشد' });
+        if (!inboundsResponse.data.success || !inboundsResponse.data.obj) {
+            return res.json({ success: false, message: 'خطا در دریافت اطلاعات Inbound' });
         }
 
-        const inbound = inboundsResponse.data.obj[0]; // Use first inbound
+        var inbound = null;
+        for (var i = 0; i < inboundsResponse.data.obj.length; i++) {
+            if (inboundsResponse.data.obj[i].id === inboundId) {
+                inbound = inboundsResponse.data.obj[i];
+                break;
+            }
+        }
+
+        if (!inbound) {
+            return res.json({ success: false, message: 'Inbound یافت نشد' });
+        }
 
         // Generate UUID
-        const uuidResponse = await axios.get(config.PANEL_URL + '/panel/api/server/getNewUUID', {
+        var uuidResponse = await axios.get(config.PANEL_URL + '/panel/api/server/getNewUUID', {
             headers: { 'Cookie': sessionCookie }
         });
 
@@ -240,15 +302,18 @@ app.post('/api/create-config', async (req, res) => {
             return res.json({ success: false, message: 'خطا در تولید UUID' });
         }
 
-        const uuid = uuidResponse.data.obj.uuid || uuidResponse.data.obj;
+        var uuid = uuidResponse.data.obj.uuid || uuidResponse.data.obj;
 
         // Fixed settings: 30 days, 100GB
-        const expiryTime = Date.now() + (30 * 24 * 60 * 60 * 1000);
-        const trafficBytes = 100 * 1024 * 1024 * 1024;
+        var expiryTime = Date.now() + (30 * 24 * 60 * 60 * 1000);
+        var trafficBytes = 100 * 1024 * 1024 * 1024;
+
+        // Create unique email for this inbound
+        var clientEmail = username + '_' + inboundId;
 
         // Create client data based on protocol
         var clientData = {
-            email: username,
+            email: clientEmail,
             enable: true,
             expiryTime: expiryTime,
             totalGB: trafficBytes,
@@ -276,12 +341,12 @@ app.post('/api/create-config', async (req, res) => {
         }
 
         // Add client to inbound
-        const payload = {
+        var payload = {
             id: inbound.id,
             settings: JSON.stringify({ clients: [clientData] })
         };
 
-        const addResponse = await axios.post(config.PANEL_URL + '/panel/api/inbounds/addClient', payload, {
+        var addResponse = await axios.post(config.PANEL_URL + '/panel/api/inbounds/addClient', payload, {
             headers: {
                 'Cookie': sessionCookie,
                 'Content-Type': 'application/json'
@@ -299,13 +364,13 @@ app.post('/api/create-config', async (req, res) => {
         var configData = {
             link: configLink,
             protocol: protocol,
+            inboundName: inbound.remark,
             expiryDate: new Date(expiryTime).toLocaleDateString('fa-IR'),
             traffic: '100 GB',
             createdAt: Date.now()
         };
 
-        users[username].hasConfig = true;
-        users[username].configData = configData;
+        users[username].configs[inboundId] = configData;
         saveUsers(users);
 
         res.json({
@@ -376,13 +441,13 @@ function generateConfigLink(inbound, client, protocol) {
 
         configLink = 'vless://' + client.id + '@' + host + ':' + port + '?' + params + '#' + encodeURIComponent(client.email);
     } else if (protocol === 'trojan') {
-        var params = 'security=' + security + '&type=' + network;
+        var trojanParams = 'security=' + security + '&type=' + network;
 
         if (security === 'tls' && streamSettings.tlsSettings) {
-            params += '&sni=' + (streamSettings.tlsSettings.serverName || host);
+            trojanParams += '&sni=' + (streamSettings.tlsSettings.serverName || host);
         }
 
-        configLink = 'trojan://' + client.password + '@' + host + ':' + port + '?' + params + '#' + encodeURIComponent(client.email);
+        configLink = 'trojan://' + client.password + '@' + host + ':' + port + '?' + trojanParams + '#' + encodeURIComponent(client.email);
     } else if (protocol === 'shadowsocks') {
         var method = client.method || 'chacha20-ietf-poly1305';
         var auth = Buffer.from(method + ':' + client.password).toString('base64');
@@ -394,7 +459,7 @@ function generateConfigLink(inbound, client, protocol) {
 
 // ==================== Serve Pages ====================
 
-app.get('/', (req, res) => {
+app.get('/', function(req, res) {
     res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 

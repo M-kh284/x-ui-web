@@ -279,6 +279,80 @@ h1 {
     color: #00d9ff;
 }
 
+/* Modal */
+.modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.8);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    padding: 20px;
+}
+
+.modal-content {
+    max-width: 500px;
+    width: 100%;
+    max-height: 90vh;
+    overflow-y: auto;
+}
+
+.modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+    padding-bottom: 15px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.modal-header h3 {
+    color: #00d9ff;
+    margin: 0;
+}
+
+/* Config Item */
+.config-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 15px;
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 8px;
+    margin-bottom: 10px;
+}
+
+.config-item-info {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+
+.config-name {
+    color: #fff;
+    font-weight: bold;
+}
+
+.config-protocol {
+    color: #00d9ff;
+    font-size: 12px;
+}
+
+#existingConfigs {
+    margin-bottom: 20px;
+    padding-bottom: 20px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+#existingConfigs h3 {
+    color: #00ff88;
+    margin-bottom: 15px;
+}
+
 .config-box {
     margin-bottom: 20px;
 }

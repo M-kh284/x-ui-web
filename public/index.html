@@ -71,34 +71,51 @@
                 <button id="logoutBtn" class="btn btn-danger btn-sm">خروج</button>
             </div>
 
-            <!-- Get Config Button (if no config yet) -->
+            <!-- Existing Configs -->
+            <div id="existingConfigs" class="hidden">
+                <h3>کانفیگ‌های شما</h3>
+                <div id="configsList"></div>
+            </div>
+
+            <!-- Get New Config Section -->
             <div id="getConfigSection">
                 <div class="info-box">
-                    <h3>دریافت کانفیگ رایگان</h3>
+                    <h3>دریافت کانفیگ جدید</h3>
                     <ul>
                         <li>مدت اعتبار: <strong>30 روز</strong></li>
                         <li>حجم ترافیک: <strong>100 گیگابایت</strong></li>
-                        <li>تعداد دستگاه: <strong>نامحدود</strong></li>
                     </ul>
-                    <p class="warning">توجه: هر کاربر فقط یک بار می‌تواند کانفیگ دریافت کند!</p>
+                    <p class="warning">توجه: در هر Inbound فقط یک بار می‌توانید کانفیگ دریافت کنید!</p>
+
+                    <div class="form-group">
+                        <label for="inboundSelect">انتخاب Inbound:</label>
+                        <select id="inboundSelect">
+                            <option value="">در حال بارگذاری...</option>
+                        </select>
+                    </div>
+
                     <button id="getConfigBtn" class="btn btn-success btn-lg">دریافت کانفیگ</button>
                 </div>
                 <div id="getConfigError" class="error"></div>
             </div>
+        </div>
 
-            <!-- Show Config (if already has config) -->
-            <div id="showConfigSection" class="hidden">
-                <div class="config-info">
-                    <h3>کانفیگ شما</h3>
-                    <div class="config-details">
-                        <p>پروتکل: <strong id="configProtocol"></strong></p>
-                        <p>تاریخ انقضا: <strong id="configExpiry"></strong></p>
-                        <p>حجم ترافیک: <strong id="configTraffic"></strong></p>
-                    </div>
+        <!-- Config Modal -->
+        <div id="configModal" class="modal hidden">
+            <div class="modal-content card">
+                <div class="modal-header">
+                    <h3 id="modalTitle">کانفیگ</h3>
+                    <button id="closeModalBtn" class="btn btn-secondary btn-sm">بستن</button>
+                </div>
+                <div class="config-details">
+                    <p>پروتکل: <strong id="configProtocol"></strong></p>
+                    <p>Inbound: <strong id="configInbound"></strong></p>
+                    <p>تاریخ انقضا: <strong id="configExpiry"></strong></p>
+                    <p>حجم ترافیک: <strong id="configTraffic"></strong></p>
                 </div>
 
                 <div class="config-box">
-                    <h3>لینک اتصال:</h3>
+                    <h4>لینک اتصال:</h4>
                     <div class="config-link">
                         <textarea id="configLink" readonly></textarea>
                         <button id="copyConfigBtn" class="btn btn-primary btn-sm">کپی</button>
@@ -106,7 +123,7 @@
                 </div>
 
                 <div class="config-box">
-                    <h3>QR Code:</h3>
+                    <h4>QR Code:</h4>
                     <div id="qrcode"></div>
                 </div>
             </div>
