@@ -12,27 +12,52 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
+// Axios with timeout
+var axiosInstance = axios.create({
+    timeout: 10000 // 10 seconds timeout
+});
+
 // Store session cookie for X-UI panel
-let sessionCookie = '';
-let isLoggedIn = false;
+var sessionCookie = '';
+var isLoggedIn = false;
+
+// Cache for inbounds (refresh every 5 minutes)
+var inboundsCache = null;
+var inboundsCacheTime = 0;
+var CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
+
+// Users cache in memory
+var usersCache = null;
+var usersCacheTime = 0;
 
 // Users database file
-const USERS_FILE = path.join(__dirname, 'users.json');
+var USERS_FILE = path.join(__dirname, 'users.json');
 
-// Initialize users database
+// Load users (with cache)
 function loadUsers() {
+    // Check if cache is valid (less than 1 second old)
+    if (usersCache && (Date.now() - usersCacheTime) < 1000) {
+        return usersCache;
+    }
+
     try {
         if (fs.existsSync(USERS_FILE)) {
-            return JSON.parse(fs.readFileSync(USERS_FILE, 'utf8'));
+            usersCache = JSON.parse(fs.readFileSync(USERS_FILE, 'utf8'));
+            usersCacheTime = Date.now();
+            return usersCache;
         }
     } catch (error) {
         console.error('Error loading users:', error.message);
     }
-    return {};
+    usersCache = {};
+    usersCacheTime = Date.now();
+    return usersCache;
 }
 
 function saveUsers(users) {
     try {
+        usersCache = users;
+        usersCacheTime = Date.now();
         fs.writeFileSync(USERS_FILE, JSON.stringify(users, null, 2));
     } catch (error) {
         console.error('Error saving users:', error.message);
@@ -50,7 +75,7 @@ function generateToken() {
 }
 
 // User sessions (in memory)
-let userSessions = {};
+var userSessions = {};
 
 // ==================== User Authentication ====================
 
@@ -77,11 +102,10 @@ app.post('/api/user/register', function(req, res) {
         return res.json({ success: false, message: 'این نام کاربری قبلاً ثبت شده' });
     }
 
-    // Create new user with configs array (one per inbound)
     users[username] = {
         password: hashPassword(password),
         createdAt: Date.now(),
-        configs: {} // Object with inboundId as key
+        configs: {}
     };
 
     saveUsers(users);
@@ -167,7 +191,7 @@ async function loginToPanel() {
         formData.append('username', config.PANEL_USERNAME);
         formData.append('password', config.PANEL_PASSWORD);
 
-        var response = await axios.post(config.PANEL_URL + '/login', formData.toString(), {
+        var response = await axiosInstance.post(config.PANEL_URL + '/login', formData.toString(), {
             headers: {
                 'Content-Type': 'application/x-www-form-urlencoded'
             }
@@ -196,9 +220,37 @@ async function ensureLoggedIn() {
     return true;
 }
 
+// Get inbounds with caching
+async function getInboundsFromPanel() {
+    // Check cache first
+    if (inboundsCache && (Date.now() - inboundsCacheTime) < CACHE_DURATION) {
+        return inboundsCache;
+    }
+
+    try {
+        await ensureLoggedIn();
+
+        var response = await axiosInstance.get(config.PANEL_URL + '/panel/api/inbounds/list', {
+            headers: { 'Cookie': sessionCookie }
+        });
+
+        if (response.data.success && response.data.obj) {
+            inboundsCache = response.data.obj;
+            inboundsCacheTime = Date.now();
+            return inboundsCache;
+        }
+    } catch (error) {
+        console.error('Get inbounds error:', error.message);
+        // If we have old cache, return it
+        if (inboundsCache) {
+            return inboundsCache;
+        }
+    }
+    return null;
+}
+
 // ==================== Inbounds API ====================
 
-// Get list of inbounds
 app.get('/api/inbounds', async function(req, res) {
     var token = req.headers['authorization'];
 
@@ -206,35 +258,25 @@ app.get('/api/inbounds', async function(req, res) {
         return res.json({ success: false, message: 'لطفاً وارد شوید' });
     }
 
-    try {
-        await ensureLoggedIn();
+    var inboundsList = await getInboundsFromPanel();
 
-        var response = await axios.get(config.PANEL_URL + '/panel/api/inbounds/list', {
-            headers: { 'Cookie': sessionCookie }
+    if (inboundsList) {
+        var inbounds = inboundsList.map(function(inbound) {
+            return {
+                id: inbound.id,
+                remark: inbound.remark,
+                protocol: inbound.protocol,
+                port: inbound.port
+            };
         });
-
-        if (response.data.success && response.data.obj) {
-            var inbounds = response.data.obj.map(function(inbound) {
-                return {
-                    id: inbound.id,
-                    remark: inbound.remark,
-                    protocol: inbound.protocol,
-                    port: inbound.port
-                };
-            });
-            res.json({ success: true, inbounds: inbounds });
-        } else {
-            res.json({ success: false, message: 'خطا در دریافت لیست Inbound ها' });
-        }
-    } catch (error) {
-        console.error('Get inbounds error:', error.message);
-        res.json({ success: false, message: error.message });
+        res.json({ success: true, inbounds: inbounds });
+    } else {
+        res.json({ success: false, message: 'خطا در دریافت لیست Inbound ها' });
     }
 });
 
 // ==================== Config Creation ====================
 
-// Create config for user in specific inbound
 app.post('/api/create-config', async function(req, res) {
     var token = req.headers['authorization'];
     var inboundId = req.body.inboundId;
@@ -255,12 +297,10 @@ app.post('/api/create-config', async function(req, res) {
         return res.json({ success: false, message: 'کاربر یافت نشد' });
     }
 
-    // Initialize configs if not exists
     if (!user.configs) {
         user.configs = {};
     }
 
-    // Check if user already has config for this inbound
     if (user.configs[inboundId]) {
         return res.json({
             success: false,
@@ -272,19 +312,16 @@ app.post('/api/create-config', async function(req, res) {
     try {
         await ensureLoggedIn();
 
-        // Get inbound details
-        var inboundsResponse = await axios.get(config.PANEL_URL + '/panel/api/inbounds/list', {
-            headers: { 'Cookie': sessionCookie }
-        });
-
-        if (!inboundsResponse.data.success || !inboundsResponse.data.obj) {
+        // Get inbound from cache or panel
+        var inboundsList = await getInboundsFromPanel();
+        if (!inboundsList) {
             return res.json({ success: false, message: 'خطا در دریافت اطلاعات Inbound' });
         }
 
         var inbound = null;
-        for (var i = 0; i < inboundsResponse.data.obj.length; i++) {
-            if (inboundsResponse.data.obj[i].id === inboundId) {
-                inbound = inboundsResponse.data.obj[i];
+        for (var i = 0; i < inboundsList.length; i++) {
+            if (inboundsList[i].id === inboundId) {
+                inbound = inboundsList[i];
                 break;
             }
         }
@@ -294,7 +331,7 @@ app.post('/api/create-config', async function(req, res) {
         }
 
         // Generate UUID
-        var uuidResponse = await axios.get(config.PANEL_URL + '/panel/api/server/getNewUUID', {
+        var uuidResponse = await axiosInstance.get(config.PANEL_URL + '/panel/api/server/getNewUUID', {
             headers: { 'Cookie': sessionCookie }
         });
 
@@ -308,10 +345,8 @@ app.post('/api/create-config', async function(req, res) {
         var expiryTime = Date.now() + (30 * 24 * 60 * 60 * 1000);
         var trafficBytes = 100 * 1024 * 1024 * 1024;
 
-        // Create unique email for this inbound
         var clientEmail = username + '_' + inboundId;
 
-        // Create client data based on protocol
         var clientData = {
             email: clientEmail,
             enable: true,
@@ -340,13 +375,12 @@ app.post('/api/create-config', async function(req, res) {
             clientData.id = uuid;
         }
 
-        // Add client to inbound
         var payload = {
             id: inbound.id,
             settings: JSON.stringify({ clients: [clientData] })
         };
 
-        var addResponse = await axios.post(config.PANEL_URL + '/panel/api/inbounds/addClient', payload, {
+        var addResponse = await axiosInstance.post(config.PANEL_URL + '/panel/api/inbounds/addClient', payload, {
             headers: {
                 'Cookie': sessionCookie,
                 'Content-Type': 'application/json'
@@ -357,10 +391,8 @@ app.post('/api/create-config', async function(req, res) {
             return res.json({ success: false, message: addResponse.data.msg || 'خطا در ایجاد کانفیگ' });
         }
 
-        // Generate config link
         var configLink = generateConfigLink(inbound, clientData, protocol);
 
-        // Save to user
         var configData = {
             link: configLink,
             protocol: protocol,
@@ -469,9 +501,11 @@ app.listen(config.PORT, async function() {
     console.log('Server running on http://localhost:' + config.PORT);
     console.log('Panel URL: ' + config.PANEL_URL);
 
+    // Pre-load inbounds cache
     var success = await loginToPanel();
     if (success) {
-        console.log('Ready to accept requests');
+        await getInboundsFromPanel();
+        console.log('Ready to accept requests (inbounds cached)');
     } else {
         console.log('Warning: Could not login to panel. Check config.js');
     }
