@@ -1,78 +1,63 @@
 // Global state
-let currentServerUrl = '';
+let panelUrl = '';
 let inbounds = [];
-let qrCodeInstance = null;
 
 // DOM Elements
-const loginSection = document.getElementById('loginSection');
+const loadingSection = document.getElementById('loadingSection');
+const errorSection = document.getElementById('errorSection');
 const userSection = document.getElementById('userSection');
 const configSection = document.getElementById('configSection');
-const loginForm = document.getElementById('loginForm');
 const createUserForm = document.getElementById('createUserForm');
-const loginError = document.getElementById('loginError');
 const createError = document.getElementById('createError');
 const connectedServer = document.getElementById('connectedServer');
 const inboundSelect = document.getElementById('inboundSelect');
 const configLink = document.getElementById('configLink');
 
 // Event Listeners
-loginForm.addEventListener('submit', handleLogin);
 createUserForm.addEventListener('submit', handleCreateUser);
-document.getElementById('logoutBtn').addEventListener('click', handleLogout);
 document.getElementById('copyConfigBtn').addEventListener('click', copyConfig);
 document.getElementById('createAnotherBtn').addEventListener('click', showUserSection);
+document.getElementById('retryBtn').addEventListener('click', initializeApp);
 
-// Login handler
-async function handleLogin(e) {
-    e.preventDefault();
+// Initialize app on load
+document.addEventListener('DOMContentLoaded', initializeApp);
 
-    const serverUrl = document.getElementById('serverUrl').value.replace(/\/$/, '');
-    const username = document.getElementById('username').value;
-    const password = document.getElementById('password').value;
-
-    showError(loginError, '');
+// Initialize application
+async function initializeApp() {
+    showLoading();
 
     try {
-        const response = await fetch('/api/login', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ serverUrl, username, password })
-        });
+        // Check connection status
+        const statusResponse = await fetch('/api/status');
+        const status = await statusResponse.json();
 
-        const data = await response.json();
-
-        if (data.success) {
-            currentServerUrl = serverUrl;
-            connectedServer.textContent = serverUrl;
+        if (status.success) {
+            panelUrl = status.panelUrl;
+            connectedServer.textContent = panelUrl;
             await loadInbounds();
             showUserSection();
         } else {
-            showError(loginError, data.message || 'Login failed');
+            showError('نتوانستیم به پنل متصل شویم. لطفاً تنظیمات config.js را بررسی کنید.');
         }
     } catch (error) {
-        showError(loginError, 'Connection error: ' + error.message);
+        showError('خطا در اتصال به سرور: ' + error.message);
     }
 }
 
 // Load inbounds list
 async function loadInbounds() {
     try {
-        const response = await fetch('/api/inbounds/list', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ serverUrl: currentServerUrl })
-        });
-
+        const response = await fetch('/api/inbounds/list');
         const data = await response.json();
 
         if (data.success && data.obj) {
             inbounds = data.obj;
             populateInboundSelect();
         } else {
-            showError(createError, 'Failed to load inbounds');
+            showFormError('خطا در بارگذاری Inbound ها');
         }
     } catch (error) {
-        showError(createError, 'Error loading inbounds: ' + error.message);
+        showFormError('خطا در بارگذاری: ' + error.message);
     }
 }
 
@@ -81,7 +66,7 @@ function populateInboundSelect() {
     inboundSelect.innerHTML = '';
 
     if (inbounds.length === 0) {
-        inboundSelect.innerHTML = '<option value="">No inbounds found</option>';
+        inboundSelect.innerHTML = '<option value="">هیچ Inbound یافت نشد</option>';
         return;
     }
 
@@ -105,23 +90,19 @@ async function handleCreateUser(e) {
 
     const selectedInbound = inbounds.find(i => i.id === inboundId);
     if (!selectedInbound) {
-        showError(createError, 'Please select an inbound');
+        showFormError('لطفاً یک Inbound انتخاب کنید');
         return;
     }
 
-    showError(createError, '');
+    showFormError('');
 
     try {
         // Generate UUID for the client
-        const uuidResponse = await fetch('/api/server/getNewUUID', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ serverUrl: currentServerUrl })
-        });
+        const uuidResponse = await fetch('/api/server/getNewUUID');
         const uuidData = await uuidResponse.json();
 
         if (!uuidData.success) {
-            showError(createError, 'Failed to generate UUID');
+            showFormError('خطا در تولید UUID');
             return;
         }
 
@@ -138,7 +119,6 @@ async function handleCreateUser(e) {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                serverUrl: currentServerUrl,
                 inboundId: inboundId,
                 clientData: clientData
             })
@@ -152,19 +132,19 @@ async function handleCreateUser(e) {
             const configUri = generateConfigLink(selectedInbound, clientData);
             showConfigSection(configUri);
         } else {
-            const errorMsg = data.msg || data.message || 'Failed to create user';
+            const errorMsg = data.msg || data.message || 'خطا در ایجاد کاربر';
             console.error('Create user failed:', errorMsg, data);
-            showError(createError, errorMsg);
+            showFormError(errorMsg);
         }
     } catch (error) {
         console.error('Create user error:', error);
-        showError(createError, 'Error creating user: ' + error.message);
+        showFormError('خطا در ایجاد کاربر: ' + error.message);
     }
 }
 
 // Create client data based on protocol
 function createClientData(protocol, uuid, email, expiryTime, trafficLimitGB) {
-    const trafficBytes = trafficLimitGB * 1024 * 1024 * 1024; // Convert GB to bytes
+    const trafficBytes = trafficLimitGB * 1024 * 1024 * 1024;
 
     const baseClient = {
         email: email,
@@ -215,10 +195,9 @@ function generateSubId() {
 // Generate config link
 function generateConfigLink(inbound, client) {
     const protocol = inbound.protocol.toLowerCase();
-    const settings = JSON.parse(inbound.settings || '{}');
     const streamSettings = JSON.parse(inbound.streamSettings || '{}');
 
-    const host = new URL(currentServerUrl).hostname;
+    const host = new URL(panelUrl).hostname;
     const port = inbound.port;
     const network = streamSettings.network || 'tcp';
     const security = streamSettings.security || 'none';
@@ -294,15 +273,37 @@ function generateConfigLink(inbound, client) {
     return configLink;
 }
 
-// Show config section
+// UI Functions
+function showLoading() {
+    loadingSection.classList.remove('hidden');
+    errorSection.classList.add('hidden');
+    userSection.classList.add('hidden');
+    configSection.classList.add('hidden');
+}
+
+function showError(message) {
+    loadingSection.classList.add('hidden');
+    errorSection.classList.remove('hidden');
+    userSection.classList.add('hidden');
+    configSection.classList.add('hidden');
+    document.getElementById('connectionError').textContent = message;
+}
+
+function showUserSection() {
+    loadingSection.classList.add('hidden');
+    errorSection.classList.add('hidden');
+    userSection.classList.remove('hidden');
+    configSection.classList.add('hidden');
+    document.getElementById('clientEmail').value = '';
+    showFormError('');
+}
+
 function showConfigSection(configUri) {
     configLink.value = configUri;
 
-    // Clear previous QR code
     const qrcodeContainer = document.getElementById('qrcode');
     qrcodeContainer.innerHTML = '';
 
-    // Generate new QR code
     if (typeof QRCode !== 'undefined') {
         new QRCode(qrcodeContainer, {
             text: configUri,
@@ -314,20 +315,20 @@ function showConfigSection(configUri) {
         });
     }
 
-    loginSection.classList.add('hidden');
+    loadingSection.classList.add('hidden');
+    errorSection.classList.add('hidden');
     userSection.classList.add('hidden');
     configSection.classList.remove('hidden');
 }
 
-// Show user section
-function showUserSection() {
-    loginSection.classList.add('hidden');
-    userSection.classList.remove('hidden');
-    configSection.classList.add('hidden');
-
-    // Clear form
-    document.getElementById('clientEmail').value = '';
-    showError(createError, '');
+function showFormError(message) {
+    if (message) {
+        createError.textContent = message;
+        createError.classList.add('show');
+    } else {
+        createError.textContent = '';
+        createError.classList.remove('show');
+    }
 }
 
 // Copy config to clipboard
@@ -335,46 +336,10 @@ async function copyConfig() {
     try {
         await navigator.clipboard.writeText(configLink.value);
         const btn = document.getElementById('copyConfigBtn');
-        btn.textContent = 'Copied!';
-        setTimeout(() => btn.textContent = 'Copy', 2000);
+        btn.textContent = 'کپی شد!';
+        setTimeout(() => btn.textContent = 'کپی', 2000);
     } catch (error) {
-        // Fallback for older browsers
         configLink.select();
         document.execCommand('copy');
-    }
-}
-
-// Logout handler
-async function handleLogout() {
-    try {
-        await fetch('/api/logout', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ serverUrl: currentServerUrl })
-        });
-    } catch (error) {
-        console.error('Logout error:', error);
-    }
-
-    currentServerUrl = '';
-    inbounds = [];
-
-    loginSection.classList.remove('hidden');
-    userSection.classList.add('hidden');
-    configSection.classList.add('hidden');
-
-    // Clear forms
-    loginForm.reset();
-    createUserForm.reset();
-}
-
-// Show error message
-function showError(element, message) {
-    if (message) {
-        element.textContent = message;
-        element.classList.add('show');
-    } else {
-        element.textContent = '';
-        element.classList.remove('show');
     }
 }

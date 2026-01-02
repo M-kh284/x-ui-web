@@ -10,25 +10,19 @@
     <div class="container">
         <h1>X-UI User Manager</h1>
 
-        <!-- Login Section -->
-        <div id="loginSection" class="card">
-            <h2>اتصال به پنل X-UI</h2>
-            <form id="loginForm">
-                <div class="form-group">
-                    <label for="serverUrl">آدرس سرور:</label>
-                    <input type="text" id="serverUrl" placeholder="https://your-server.com:port" required>
-                </div>
-                <div class="form-group">
-                    <label for="username">نام کاربری:</label>
-                    <input type="text" id="username" required>
-                </div>
-                <div class="form-group">
-                    <label for="password">رمز عبور:</label>
-                    <input type="password" id="password" required>
-                </div>
-                <button type="submit" class="btn btn-primary">ورود</button>
-            </form>
-            <div id="loginError" class="error"></div>
+        <!-- Loading Section -->
+        <div id="loadingSection" class="card">
+            <div class="loading-content">
+                <div class="spinner"></div>
+                <p>در حال اتصال به پنل...</p>
+            </div>
+        </div>
+
+        <!-- Error Section -->
+        <div id="errorSection" class="card hidden">
+            <h2>خطا در اتصال</h2>
+            <p id="connectionError"></p>
+            <button id="retryBtn" class="btn btn-primary">تلاش مجدد</button>
         </div>
 
         <!-- User Creation Section -->
@@ -36,7 +30,6 @@
             <h2>ایجاد کاربر جدید</h2>
             <div class="server-info">
                 <span>متصل به: <strong id="connectedServer"></strong></span>
-                <button id="logoutBtn" class="btn btn-danger btn-sm">خروج</button>
             </div>
 
             <form id="createUserForm">

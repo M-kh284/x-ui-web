@@ -2,28 +2,26 @@ const express = require('express');
 const axios = require('axios');
 const cors = require('cors');
 const path = require('path');
+const config = require('./config');
 
 const app = express();
-const PORT = process.env.PORT || 3000;
 
 app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Store session cookies for authenticated requests
-let sessionCookies = {};
+// Store session cookie
+let sessionCookie = '';
+let isLoggedIn = false;
 
-// Login to X-UI panel
-app.post('/api/login', async (req, res) => {
+// Login to X-UI panel (internal function)
+async function loginToPanel() {
     try {
-        const { serverUrl, username, password } = req.body;
-
-        // Send as form data
         const formData = new URLSearchParams();
-        formData.append('username', username);
-        formData.append('password', password);
+        formData.append('username', config.PANEL_USERNAME);
+        formData.append('password', config.PANEL_PASSWORD);
 
-        const response = await axios.post(`${serverUrl}/login`, formData.toString(), {
+        const response = await axios.post(`${config.PANEL_URL}/login`, formData.toString(), {
             headers: {
                 'Content-Type': 'application/x-www-form-urlencoded'
             }
@@ -32,47 +30,74 @@ app.post('/api/login', async (req, res) => {
         console.log('Login response:', response.data);
 
         if (response.data.success) {
-            // Store cookies for this server
             const cookies = response.headers['set-cookie'];
-            sessionCookies[serverUrl] = cookies ? cookies.join('; ') : '';
-            console.log('Cookies stored:', sessionCookies[serverUrl]);
-
-            res.json({ success: true, message: 'Login successful' });
+            sessionCookie = cookies ? cookies.join('; ') : '';
+            isLoggedIn = true;
+            console.log('Logged in to panel successfully');
+            return true;
         } else {
-            res.json({ success: false, message: response.data.msg || 'Login failed' });
+            console.error('Login failed:', response.data.msg);
+            return false;
         }
     } catch (error) {
         console.error('Login error:', error.message);
-        res.json({ success: false, message: error.message });
+        return false;
     }
+}
+
+// Ensure logged in before API calls
+async function ensureLoggedIn() {
+    if (!isLoggedIn || !sessionCookie) {
+        return await loginToPanel();
+    }
+    return true;
+}
+
+// Get panel config (for frontend)
+app.get('/api/config', (req, res) => {
+    res.json({
+        panelUrl: config.PANEL_URL
+    });
+});
+
+// Check connection status
+app.get('/api/status', async (req, res) => {
+    const loggedIn = await ensureLoggedIn();
+    res.json({
+        success: loggedIn,
+        panelUrl: config.PANEL_URL
+    });
 });
 
 // Get list of inbounds
-app.post('/api/inbounds/list', async (req, res) => {
+app.get('/api/inbounds/list', async (req, res) => {
     try {
-        const { serverUrl } = req.body;
+        await ensureLoggedIn();
 
-        const response = await axios.get(`${serverUrl}/panel/api/inbounds/list`, {
+        const response = await axios.get(`${config.PANEL_URL}/panel/api/inbounds/list`, {
             headers: {
-                'Cookie': sessionCookies[serverUrl] || ''
+                'Cookie': sessionCookie
             }
         });
 
         res.json(response.data);
     } catch (error) {
+        console.error('Get inbounds error:', error.message);
+        // Try to re-login and retry
+        isLoggedIn = false;
         res.json({ success: false, message: error.message });
     }
 });
 
 // Get inbound by ID
-app.post('/api/inbounds/get/:id', async (req, res) => {
+app.get('/api/inbounds/get/:id', async (req, res) => {
     try {
-        const { serverUrl } = req.body;
+        await ensureLoggedIn();
         const { id } = req.params;
 
-        const response = await axios.get(`${serverUrl}/panel/api/inbounds/get/${id}`, {
+        const response = await axios.get(`${config.PANEL_URL}/panel/api/inbounds/get/${id}`, {
             headers: {
-                'Cookie': sessionCookies[serverUrl] || ''
+                'Cookie': sessionCookie
             }
         });
 
@@ -85,7 +110,8 @@ app.post('/api/inbounds/get/:id', async (req, res) => {
 // Add client to inbound
 app.post('/api/inbounds/addClient', async (req, res) => {
     try {
-        const { serverUrl, inboundId, clientData } = req.body;
+        await ensureLoggedIn();
+        const { inboundId, clientData } = req.body;
 
         const payload = {
             id: inboundId,
@@ -96,12 +122,10 @@ app.post('/api/inbounds/addClient', async (req, res) => {
 
         console.log('Adding client to inbound:', inboundId);
         console.log('Client data:', JSON.stringify(clientData, null, 2));
-        console.log('Full payload:', JSON.stringify(payload, null, 2));
-        console.log('Using cookies:', sessionCookies[serverUrl] ? 'Yes' : 'No');
 
-        const response = await axios.post(`${serverUrl}/panel/api/inbounds/addClient`, payload, {
+        const response = await axios.post(`${config.PANEL_URL}/panel/api/inbounds/addClient`, payload, {
             headers: {
-                'Cookie': sessionCookies[serverUrl] || '',
+                'Cookie': sessionCookie,
                 'Content-Type': 'application/json'
             }
         });
@@ -110,6 +134,10 @@ app.post('/api/inbounds/addClient', async (req, res) => {
         res.json(response.data);
     } catch (error) {
         console.error('Add client error:', error.response?.data || error.message);
+        // Try to re-login on auth error
+        if (error.response?.status === 401) {
+            isLoggedIn = false;
+        }
         res.json({
             success: false,
             message: error.response?.data?.msg || error.message
@@ -118,13 +146,13 @@ app.post('/api/inbounds/addClient', async (req, res) => {
 });
 
 // Generate new UUID
-app.post('/api/server/getNewUUID', async (req, res) => {
+app.get('/api/server/getNewUUID', async (req, res) => {
     try {
-        const { serverUrl } = req.body;
+        await ensureLoggedIn();
 
-        const response = await axios.get(`${serverUrl}/panel/api/server/getNewUUID`, {
+        const response = await axios.get(`${config.PANEL_URL}/panel/api/server/getNewUUID`, {
             headers: {
-                'Cookie': sessionCookies[serverUrl] || ''
+                'Cookie': sessionCookie
             }
         });
 
@@ -134,18 +162,21 @@ app.post('/api/server/getNewUUID', async (req, res) => {
     }
 });
 
-// Logout
-app.post('/api/logout', (req, res) => {
-    const { serverUrl } = req.body;
-    delete sessionCookies[serverUrl];
-    res.json({ success: true });
-});
-
 // Serve the main page
 app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-app.listen(PORT, () => {
-    console.log(`Server running on http://localhost:${PORT}`);
+// Start server and login to panel
+app.listen(config.PORT, async () => {
+    console.log(`Server running on http://localhost:${config.PORT}`);
+    console.log(`Panel URL: ${config.PANEL_URL}`);
+
+    // Auto-login on startup
+    const success = await loginToPanel();
+    if (success) {
+        console.log('Ready to accept requests');
+    } else {
+        console.log('Warning: Could not login to panel. Check config.js');
+    }
 });
