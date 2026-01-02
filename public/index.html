@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>X-UI User Manager</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <h1>X-UI User Manager</h1>
+
+        <!-- Login Section -->
+        <div id="loginSection" class="card">
+            <h2>اتصال به پنل X-UI</h2>
+            <form id="loginForm">
+                <div class="form-group">
+                    <label for="serverUrl">آدرس سرور:</label>
+                    <input type="text" id="serverUrl" placeholder="https://your-server.com:port" required>
+                </div>
+                <div class="form-group">
+                    <label for="username">نام کاربری:</label>
+                    <input type="text" id="username" required>
+                </div>
+                <div class="form-group">
+                    <label for="password">رمز عبور:</label>
+                    <input type="password" id="password" required>
+                </div>
+                <button type="submit" class="btn btn-primary">ورود</button>
+            </form>
+            <div id="loginError" class="error"></div>
+        </div>
+
+        <!-- User Creation Section -->
+        <div id="userSection" class="card hidden">
+            <h2>ایجاد کاربر جدید</h2>
+            <div class="server-info">
+                <span>متصل به: <strong id="connectedServer"></strong></span>
+                <button id="logoutBtn" class="btn btn-danger btn-sm">خروج</button>
+            </div>
+
+            <form id="createUserForm">
+                <div class="form-group">
+                    <label for="inboundSelect">انتخاب Inbound:</label>
+                    <select id="inboundSelect" required>
+                        <option value="">در حال بارگذاری...</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="clientEmail">ایمیل کاربر (نام کاربری):</label>
+                    <input type="text" id="clientEmail" placeholder="user@example.com" required>
+                </div>
+                <div class="form-group">
+                    <label for="expiryDays">مدت اعتبار (روز):</label>
+                    <input type="number" id="expiryDays" value="30" min="1">
+                </div>
+                <div class="form-group">
+                    <label for="trafficLimit">محدودیت ترافیک (GB):</label>
+                    <input type="number" id="trafficLimit" value="0" min="0">
+                    <small>0 = نامحدود</small>
+                </div>
+                <button type="submit" class="btn btn-success">ایجاد کاربر</button>
+            </form>
+            <div id="createError" class="error"></div>
+        </div>
+
+        <!-- Config Display Section -->
+        <div id="configSection" class="card hidden">
+            <h2>کانفیگ کاربر</h2>
+            <div class="config-box">
+                <h3>لینک اتصال:</h3>
+                <div class="config-link">
+                    <textarea id="configLink" readonly></textarea>
+                    <button id="copyConfigBtn" class="btn btn-primary btn-sm">کپی</button>
+                </div>
+            </div>
+            <div class="config-box">
+                <h3>QR Code:</h3>
+                <div id="qrcode"></div>
+            </div>
+            <button id="createAnotherBtn" class="btn btn-secondary">ایجاد کاربر دیگر</button>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>
