@@ -79,13 +79,20 @@ var userSessions = {};
 
 // ==================== User Authentication ====================
 
+// Validate email format
+function isValidEmail(email) {
+    var re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return re.test(email);
+}
+
 // Register new user
 app.post('/api/user/register', function(req, res) {
     var username = req.body.username;
     var password = req.body.password;
+    var email = req.body.email;
 
-    if (!username || !password) {
-        return res.json({ success: false, message: 'نام کاربری و رمز عبور الزامی است' });
+    if (!username || !password || !email) {
+        return res.json({ success: false, message: 'نام کاربری، ایمیل و رمز عبور الزامی است' });
     }
 
     if (username.length < 3) {
@@ -96,14 +103,26 @@ app.post('/api/user/register', function(req, res) {
         return res.json({ success: false, message: 'رمز عبور باید حداقل 4 کاراکتر باشد' });
     }
 
+    if (!isValidEmail(email)) {
+        return res.json({ success: false, message: 'فرمت ایمیل صحیح نیست' });
+    }
+
     var users = loadUsers();
 
     if (users[username]) {
         return res.json({ success: false, message: 'این نام کاربری قبلاً ثبت شده' });
     }
 
+    // Check if email already exists
+    for (var u in users) {
+        if (users[u].email === email.toLowerCase()) {
+            return res.json({ success: false, message: 'این ایمیل قبلاً ثبت شده' });
+        }
+    }
+
     users[username] = {
         password: hashPassword(password),
+        email: email.toLowerCase(),
         createdAt: Date.now(),
         configs: {}
     };
@@ -114,6 +133,73 @@ app.post('/api/user/register', function(req, res) {
     userSessions[token] = username;
 
     res.json({ success: true, token: token, message: 'ثبت‌نام موفق' });
+});
+
+// Forgot password - verify user
+app.post('/api/user/forgot-password', function(req, res) {
+    var username = req.body.username;
+    var email = req.body.email;
+
+    if (!username || !email) {
+        return res.json({ success: false, message: 'نام کاربری و ایمیل الزامی است' });
+    }
+
+    var users = loadUsers();
+    var user = users[username];
+
+    if (!user) {
+        return res.json({ success: false, message: 'کاربر یافت نشد' });
+    }
+
+    if (user.email !== email.toLowerCase()) {
+        return res.json({ success: false, message: 'ایمیل با نام کاربری مطابقت ندارد' });
+    }
+
+    // Generate reset token
+    var resetToken = generateToken();
+    users[username].resetToken = resetToken;
+    users[username].resetTokenExpiry = Date.now() + (15 * 60 * 1000); // 15 minutes
+    saveUsers(users);
+
+    res.json({ success: true, resetToken: resetToken, message: 'تأیید شد. رمز جدید را وارد کنید' });
+});
+
+// Reset password
+app.post('/api/user/reset-password', function(req, res) {
+    var username = req.body.username;
+    var resetToken = req.body.resetToken;
+    var newPassword = req.body.newPassword;
+
+    if (!username || !resetToken || !newPassword) {
+        return res.json({ success: false, message: 'اطلاعات ناقص است' });
+    }
+
+    if (newPassword.length < 4) {
+        return res.json({ success: false, message: 'رمز عبور باید حداقل 4 کاراکتر باشد' });
+    }
+
+    var users = loadUsers();
+    var user = users[username];
+
+    if (!user) {
+        return res.json({ success: false, message: 'کاربر یافت نشد' });
+    }
+
+    if (user.resetToken !== resetToken) {
+        return res.json({ success: false, message: 'توکن نامعتبر است' });
+    }
+
+    if (Date.now() > user.resetTokenExpiry) {
+        return res.json({ success: false, message: 'توکن منقضی شده. دوباره تلاش کنید' });
+    }
+
+    // Update password and clear reset token
+    users[username].password = hashPassword(newPassword);
+    delete users[username].resetToken;
+    delete users[username].resetTokenExpiry;
+    saveUsers(users);
+
+    res.json({ success: true, message: 'رمز عبور با موفقیت تغییر کرد' });
 });
 
 // Login user

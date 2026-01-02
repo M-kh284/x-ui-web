@@ -3,6 +3,7 @@ var authToken = localStorage.getItem('authToken') || '';
 var currentUser = null;
 var inbounds = [];
 var userConfigs = {};
+var resetPasswordData = { username: '', resetToken: '' };
 
 // DOM Elements
 var loadingSection = document.getElementById('loadingSection');
@@ -24,6 +25,8 @@ document.querySelectorAll('.tab-btn').forEach(function(btn) {
 // Form submissions
 document.getElementById('loginForm').addEventListener('submit', handleLogin);
 document.getElementById('registerForm').addEventListener('submit', handleRegister);
+document.getElementById('forgotForm').addEventListener('submit', handleForgotPassword);
+document.getElementById('resetForm').addEventListener('submit', handleResetPassword);
 document.getElementById('logoutBtn').addEventListener('click', handleLogout);
 document.getElementById('getConfigBtn').addEventListener('click', handleGetConfig);
 document.getElementById('copyConfigBtn').addEventListener('click', copyConfig);
@@ -142,6 +145,18 @@ function switchTab(tab) {
     document.getElementById('loginError').classList.remove('show');
     document.getElementById('registerError').textContent = '';
     document.getElementById('registerError').classList.remove('show');
+    document.getElementById('forgotError').textContent = '';
+    document.getElementById('forgotError').classList.remove('show');
+    document.getElementById('resetError').textContent = '';
+    document.getElementById('resetError').classList.remove('show');
+
+    // Reset forgot password flow
+    if (tab === 'forgot') {
+        document.getElementById('forgotStep1').classList.remove('hidden');
+        document.getElementById('forgotStep2').classList.add('hidden');
+        document.getElementById('resetSuccess').classList.add('hidden');
+        resetPasswordData = { username: '', resetToken: '' };
+    }
 }
 
 // Handle login
@@ -183,6 +198,7 @@ function handleRegister(e) {
     e.preventDefault();
 
     var username = document.getElementById('regUsername').value;
+    var email = document.getElementById('regEmail').value;
     var password = document.getElementById('regPassword').value;
     var passwordConfirm = document.getElementById('regPasswordConfirm').value;
 
@@ -196,7 +212,7 @@ function handleRegister(e) {
     fetch('/api/user/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username: username, password: password })
+        body: JSON.stringify({ username: username, email: email, password: password })
     })
     .then(function(res) { return res.json(); })
     .then(function(data) {
@@ -230,6 +246,83 @@ function handleLogout() {
         currentUser = null;
         userConfigs = {};
         showAuthSection();
+    });
+}
+
+// Handle forgot password - Step 1
+function handleForgotPassword(e) {
+    e.preventDefault();
+
+    var username = document.getElementById('forgotUsername').value;
+    var email = document.getElementById('forgotEmail').value;
+
+    showError('forgotError', '');
+
+    fetch('/api/user/forgot-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: username, email: email })
+    })
+    .then(function(res) { return res.json(); })
+    .then(function(data) {
+        if (data.success) {
+            // Store data for step 2
+            resetPasswordData.username = username;
+            resetPasswordData.resetToken = data.resetToken;
+
+            // Show step 2
+            document.getElementById('forgotStep1').classList.add('hidden');
+            document.getElementById('forgotStep2').classList.remove('hidden');
+        } else {
+            showError('forgotError', data.message);
+        }
+    })
+    .catch(function(error) {
+        showError('forgotError', 'خطا در اتصال به سرور');
+    });
+}
+
+// Handle reset password - Step 2
+function handleResetPassword(e) {
+    e.preventDefault();
+
+    var newPassword = document.getElementById('newPassword').value;
+    var newPasswordConfirm = document.getElementById('newPasswordConfirm').value;
+
+    showError('resetError', '');
+
+    if (newPassword !== newPasswordConfirm) {
+        showError('resetError', 'رمز عبور و تکرار آن یکسان نیست');
+        return;
+    }
+
+    fetch('/api/user/reset-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            username: resetPasswordData.username,
+            resetToken: resetPasswordData.resetToken,
+            newPassword: newPassword
+        })
+    })
+    .then(function(res) { return res.json(); })
+    .then(function(data) {
+        if (data.success) {
+            // Show success message
+            document.getElementById('resetForm').classList.add('hidden');
+            document.getElementById('resetSuccess').textContent = 'رمز عبور با موفقیت تغییر کرد. اکنون می‌توانید وارد شوید.';
+            document.getElementById('resetSuccess').classList.remove('hidden');
+
+            // Reset form after 3 seconds and go to login
+            setTimeout(function() {
+                switchTab('login');
+            }, 3000);
+        } else {
+            showError('resetError', data.message);
+        }
+    })
+    .catch(function(error) {
+        showError('resetError', 'خطا در اتصال به سرور');
     });
 }
 
