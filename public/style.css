@@ -155,6 +155,130 @@ h1 {
     display: none !important;
 }
 
+/* Tabs */
+.tabs {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 20px;
+}
+
+.tab-btn {
+    flex: 1;
+    padding: 12px;
+    border: none;
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.1);
+    color: #ccc;
+    font-size: 14px;
+    cursor: pointer;
+    transition: all 0.3s;
+}
+
+.tab-btn:hover {
+    background: rgba(255, 255, 255, 0.15);
+}
+
+.tab-btn.active {
+    background: linear-gradient(135deg, #00d9ff 0%, #0099cc 100%);
+    color: #000;
+    font-weight: bold;
+}
+
+.tab-content {
+    display: none;
+}
+
+.tab-content.active {
+    display: block;
+}
+
+/* User Header */
+.user-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+    padding: 15px;
+    background: rgba(0, 217, 255, 0.1);
+    border-radius: 8px;
+}
+
+.user-header strong {
+    color: #00d9ff;
+}
+
+/* Info Box */
+.info-box {
+    text-align: center;
+    padding: 20px;
+}
+
+.info-box h3 {
+    color: #00ff88;
+    margin-bottom: 20px;
+    font-size: 1.3rem;
+}
+
+.info-box ul {
+    list-style: none;
+    margin-bottom: 20px;
+}
+
+.info-box li {
+    padding: 8px 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.info-box li:last-child {
+    border-bottom: none;
+}
+
+.info-box li strong {
+    color: #00d9ff;
+}
+
+.warning {
+    color: #ffa502;
+    background: rgba(255, 165, 2, 0.1);
+    padding: 10px;
+    border-radius: 8px;
+    margin-bottom: 20px;
+    font-size: 14px;
+}
+
+.btn-lg {
+    padding: 15px 40px;
+    font-size: 16px;
+}
+
+/* Config Info */
+.config-info {
+    margin-bottom: 20px;
+}
+
+.config-info h3 {
+    color: #00ff88;
+    margin-bottom: 15px;
+}
+
+.config-details {
+    background: rgba(0, 0, 0, 0.2);
+    padding: 15px;
+    border-radius: 8px;
+}
+
+.config-details p {
+    margin-bottom: 8px;
+}
+
+.config-details p:last-child {
+    margin-bottom: 0;
+}
+
+.config-details strong {
+    color: #00d9ff;
+}
+
 .config-box {
     margin-bottom: 20px;
 }

@@ -3,75 +3,113 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>X-UI User Manager</title>
+    <title>ساخت یوزر X-UI</title>
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
     <div class="container">
-        <h1>X-UI User Manager</h1>
+        <h1>ساخت یوزر X-UI</h1>
 
         <!-- Loading Section -->
         <div id="loadingSection" class="card">
             <div class="loading-content">
                 <div class="spinner"></div>
-                <p>در حال اتصال به پنل...</p>
+                <p>در حال بارگذاری...</p>
             </div>
         </div>
 
-        <!-- Error Section -->
-        <div id="errorSection" class="card hidden">
-            <h2>خطا در اتصال</h2>
-            <p id="connectionError"></p>
-            <button id="retryBtn" class="btn btn-primary">تلاش مجدد</button>
+        <!-- Auth Section (Login/Register) -->
+        <div id="authSection" class="card hidden">
+            <div class="tabs">
+                <button class="tab-btn active" data-tab="login">ورود</button>
+                <button class="tab-btn" data-tab="register">ثبت‌نام</button>
+            </div>
+
+            <!-- Login Form -->
+            <div id="loginTab" class="tab-content active">
+                <form id="loginForm">
+                    <div class="form-group">
+                        <label for="loginUsername">نام کاربری:</label>
+                        <input type="text" id="loginUsername" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="loginPassword">رمز عبور:</label>
+                        <input type="password" id="loginPassword" required>
+                    </div>
+                    <button type="submit" class="btn btn-primary">ورود</button>
+                </form>
+                <div id="loginError" class="error"></div>
+            </div>
+
+            <!-- Register Form -->
+            <div id="registerTab" class="tab-content">
+                <form id="registerForm">
+                    <div class="form-group">
+                        <label for="regUsername">نام کاربری:</label>
+                        <input type="text" id="regUsername" required minlength="3">
+                        <small>حداقل 3 کاراکتر</small>
+                    </div>
+                    <div class="form-group">
+                        <label for="regPassword">رمز عبور:</label>
+                        <input type="password" id="regPassword" required minlength="4">
+                        <small>حداقل 4 کاراکتر</small>
+                    </div>
+                    <div class="form-group">
+                        <label for="regPasswordConfirm">تکرار رمز عبور:</label>
+                        <input type="password" id="regPasswordConfirm" required>
+                    </div>
+                    <button type="submit" class="btn btn-success">ثبت‌نام</button>
+                </form>
+                <div id="registerError" class="error"></div>
+            </div>
         </div>
 
-        <!-- User Creation Section -->
-        <div id="userSection" class="card hidden">
-            <h2>ایجاد کاربر جدید</h2>
-            <div class="server-info">
-                <span>متصل به: <strong id="connectedServer"></strong></span>
+        <!-- Dashboard Section (After Login) -->
+        <div id="dashboardSection" class="card hidden">
+            <div class="user-header">
+                <span>خوش آمدید، <strong id="usernameDisplay"></strong></span>
+                <button id="logoutBtn" class="btn btn-danger btn-sm">خروج</button>
             </div>
 
-            <form id="createUserForm">
-                <div class="form-group">
-                    <label for="inboundSelect">انتخاب Inbound:</label>
-                    <select id="inboundSelect" required>
-                        <option value="">در حال بارگذاری...</option>
-                    </select>
+            <!-- Get Config Button (if no config yet) -->
+            <div id="getConfigSection">
+                <div class="info-box">
+                    <h3>دریافت کانفیگ رایگان</h3>
+                    <ul>
+                        <li>مدت اعتبار: <strong>30 روز</strong></li>
+                        <li>حجم ترافیک: <strong>100 گیگابایت</strong></li>
+                        <li>تعداد دستگاه: <strong>نامحدود</strong></li>
+                    </ul>
+                    <p class="warning">توجه: هر کاربر فقط یک بار می‌تواند کانفیگ دریافت کند!</p>
+                    <button id="getConfigBtn" class="btn btn-success btn-lg">دریافت کانفیگ</button>
                 </div>
-                <div class="form-group">
-                    <label for="clientEmail">ایمیل کاربر (نام کاربری):</label>
-                    <input type="text" id="clientEmail" placeholder="user@example.com" required>
-                </div>
-                <div class="form-group">
-                    <label for="expiryDays">مدت اعتبار (روز):</label>
-                    <input type="number" id="expiryDays" value="30" min="1">
-                </div>
-                <div class="form-group">
-                    <label for="trafficLimit">محدودیت ترافیک (GB):</label>
-                    <input type="number" id="trafficLimit" value="0" min="0">
-                    <small>0 = نامحدود</small>
-                </div>
-                <button type="submit" class="btn btn-success">ایجاد کاربر</button>
-            </form>
-            <div id="createError" class="error"></div>
-        </div>
+                <div id="getConfigError" class="error"></div>
+            </div>
 
-        <!-- Config Display Section -->
-        <div id="configSection" class="card hidden">
-            <h2>کانفیگ کاربر</h2>
-            <div class="config-box">
-                <h3>لینک اتصال:</h3>
-                <div class="config-link">
-                    <textarea id="configLink" readonly></textarea>
-                    <button id="copyConfigBtn" class="btn btn-primary btn-sm">کپی</button>
+            <!-- Show Config (if already has config) -->
+            <div id="showConfigSection" class="hidden">
+                <div class="config-info">
+                    <h3>کانفیگ شما</h3>
+                    <div class="config-details">
+                        <p>پروتکل: <strong id="configProtocol"></strong></p>
+                        <p>تاریخ انقضا: <strong id="configExpiry"></strong></p>
+                        <p>حجم ترافیک: <strong id="configTraffic"></strong></p>
+                    </div>
+                </div>
+
+                <div class="config-box">
+                    <h3>لینک اتصال:</h3>
+                    <div class="config-link">
+                        <textarea id="configLink" readonly></textarea>
+                        <button id="copyConfigBtn" class="btn btn-primary btn-sm">کپی</button>
+                    </div>
+                </div>
+
+                <div class="config-box">
+                    <h3>QR Code:</h3>
+                    <div id="qrcode"></div>
                 </div>
             </div>
-            <div class="config-box">
-                <h3>QR Code:</h3>
-                <div id="qrcode"></div>
-            </div>
-            <button id="createAnotherBtn" class="btn btn-secondary">ایجاد کاربر دیگر</button>
         </div>
     </div>
 
