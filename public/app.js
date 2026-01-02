@@ -106,7 +106,7 @@ async function handleCreateUser(e) {
             return;
         }
 
-        const uuid = uuidData.obj;
+        const uuid = uuidData.obj.uuid || uuidData.obj;
 
         // Calculate expiry time (milliseconds)
         const expiryTime = Date.now() + (expiryDays * 24 * 60 * 60 * 1000);
