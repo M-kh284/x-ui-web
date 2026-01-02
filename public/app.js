@@ -145,15 +145,19 @@ async function handleCreateUser(e) {
         });
 
         const data = await response.json();
+        console.log('Create user response:', data);
 
         if (data.success) {
             // Generate config link
             const configUri = generateConfigLink(selectedInbound, clientData);
             showConfigSection(configUri);
         } else {
-            showError(createError, data.message || 'Failed to create user');
+            const errorMsg = data.msg || data.message || 'Failed to create user';
+            console.error('Create user failed:', errorMsg, data);
+            showError(createError, errorMsg);
         }
     } catch (error) {
+        console.error('Create user error:', error);
         showError(createError, 'Error creating user: ' + error.message);
     }
 }
@@ -168,7 +172,8 @@ function createClientData(protocol, uuid, email, expiryTime, trafficLimitGB) {
         expiryTime: expiryTime,
         totalGB: trafficBytes,
         limitIp: 0,
-        reset: 0
+        reset: 0,
+        subId: generateSubId()
     };
 
     switch (protocol.toLowerCase()) {
@@ -177,12 +182,16 @@ function createClientData(protocol, uuid, email, expiryTime, trafficLimitGB) {
             return {
                 ...baseClient,
                 id: uuid,
-                flow: ''
+                flow: '',
+                alterId: 0,
+                tgId: '',
+                fingerprint: 'chrome'
             };
         case 'trojan':
             return {
                 ...baseClient,
-                password: uuid
+                password: uuid,
+                tgId: ''
             };
         case 'shadowsocks':
             return {
@@ -196,6 +205,11 @@ function createClientData(protocol, uuid, email, expiryTime, trafficLimitGB) {
                 id: uuid
             };
     }
+}
+
+// Generate random subscription ID
+function generateSubId() {
+    return 'sub_' + Math.random().toString(36).substring(2, 15);
 }
 
 // Generate config link

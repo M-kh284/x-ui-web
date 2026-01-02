@@ -18,26 +18,31 @@ app.post('/api/login', async (req, res) => {
     try {
         const { serverUrl, username, password } = req.body;
 
-        const response = await axios.post(`${serverUrl}/login`, {
-            username,
-            password
-        }, {
+        // Send as form data
+        const formData = new URLSearchParams();
+        formData.append('username', username);
+        formData.append('password', password);
+
+        const response = await axios.post(`${serverUrl}/login`, formData.toString(), {
             headers: {
                 'Content-Type': 'application/x-www-form-urlencoded'
-            },
-            withCredentials: true
+            }
         });
+
+        console.log('Login response:', response.data);
 
         if (response.data.success) {
             // Store cookies for this server
             const cookies = response.headers['set-cookie'];
             sessionCookies[serverUrl] = cookies ? cookies.join('; ') : '';
+            console.log('Cookies stored:', sessionCookies[serverUrl]);
 
             res.json({ success: true, message: 'Login successful' });
         } else {
             res.json({ success: false, message: response.data.msg || 'Login failed' });
         }
     } catch (error) {
+        console.error('Login error:', error.message);
         res.json({ success: false, message: error.message });
     }
 });
@@ -82,21 +87,33 @@ app.post('/api/inbounds/addClient', async (req, res) => {
     try {
         const { serverUrl, inboundId, clientData } = req.body;
 
-        const response = await axios.post(`${serverUrl}/panel/api/inbounds/addClient`, {
+        const payload = {
             id: inboundId,
             settings: JSON.stringify({
                 clients: [clientData]
             })
-        }, {
+        };
+
+        console.log('Adding client to inbound:', inboundId);
+        console.log('Client data:', JSON.stringify(clientData, null, 2));
+        console.log('Full payload:', JSON.stringify(payload, null, 2));
+        console.log('Using cookies:', sessionCookies[serverUrl] ? 'Yes' : 'No');
+
+        const response = await axios.post(`${serverUrl}/panel/api/inbounds/addClient`, payload, {
             headers: {
                 'Cookie': sessionCookies[serverUrl] || '',
                 'Content-Type': 'application/json'
             }
         });
 
+        console.log('Add client response:', response.data);
         res.json(response.data);
     } catch (error) {
-        res.json({ success: false, message: error.message });
+        console.error('Add client error:', error.response?.data || error.message);
+        res.json({
+            success: false,
+            message: error.response?.data?.msg || error.message
+        });
     }
 });
 
