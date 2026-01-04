@@ -10,6 +10,7 @@
 - 30 روز اعتبار + 100GB ترافیک
 - پشتیبانی از پروتکل‌های VMESS, VLESS, Trojan, Shadowsocks
 - نمایش QR Code و کپی لینک کانفیگ
+- پنل مدیریت برای ادمین
 - رابط کاربری فارسی
 
 ## پیش‌نیازها
@@ -36,7 +37,9 @@ module.exports = {
     PANEL_URL: 'https://your-panel.com:2053',
     PANEL_USERNAME: 'admin',
     PANEL_PASSWORD: 'your-password',
-    PORT: 3000
+    PORT: 3000,
+    ADMIN_USERNAME: 'admin',
+    ADMIN_PASSWORD: 'admin123'
 };
 ```
 
@@ -46,6 +49,8 @@ export PANEL_URL=https://your-panel.com:2053
 export PANEL_USERNAME=admin
 export PANEL_PASSWORD=your-password
 export PORT=3000
+export ADMIN_USERNAME=admin
+export ADMIN_PASSWORD=your-admin-password
 ```
 
 ## اجرا
@@ -79,17 +84,32 @@ pm2 stop x-ui-web
 
 ```
 x-ui-web/
-├── config.js          # تنظیمات پنل
+├── config.js          # تنظیمات پنل و ادمین
 ├── server.js          # سرور Express
 ├── package.json       # وابستگی‌ها
 ├── users.json         # دیتابیس کاربران (خودکار ساخته می‌شود)
 └── public/
-    ├── index.html     # صفحه اصلی
-    ├── app.js         # منطق فرانت‌اند
+    ├── index.html     # صفحه اصلی کاربران
+    ├── app.js         # منطق فرانت‌اند کاربران
+    ├── admin.html     # پنل مدیریت
+    ├── admin.js       # منطق فرانت‌اند ادمین
     └── style.css      # استایل‌ها
 ```
 
+## پنل مدیریت
+
+دسترسی به پنل مدیریت: `http://localhost:3000/admin`
+
+قابلیت‌های پنل مدیریت:
+- مشاهده لیست همه کاربران
+- افزودن کاربر جدید
+- تغییر رمز عبور کاربران
+- حذف کاربران
+- جستجو در کاربران
+
 ## API ها
+
+### API کاربران
 
 | مسیر | متد | توضیحات |
 |------|-----|---------|
@@ -101,6 +121,19 @@ x-ui-web/
 | `/api/user/reset-password` | POST | تغییر رمز عبور |
 | `/api/inbounds` | GET | دریافت لیست Inbound ها |
 | `/api/create-config` | POST | ساخت کانفیگ جدید |
+
+### API ادمین
+
+| مسیر | متد | توضیحات |
+|------|-----|---------|
+| `/api/admin/login` | POST | ورود ادمین |
+| `/api/admin/logout` | POST | خروج ادمین |
+| `/api/admin/check` | GET | بررسی نشست ادمین |
+| `/api/admin/users` | GET | لیست همه کاربران |
+| `/api/admin/users` | POST | افزودن کاربر جدید |
+| `/api/admin/users/:username` | GET | جزئیات کاربر |
+| `/api/admin/users/:username` | DELETE | حذف کاربر |
+| `/api/admin/users/:username/reset-password` | POST | تغییر رمز کاربر |
 
 ## نکات امنیتی
 

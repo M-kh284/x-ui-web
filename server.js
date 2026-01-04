@@ -269,6 +269,207 @@ app.post('/api/user/logout', function(req, res) {
     res.json({ success: true });
 });
 
+// ==================== Admin Authentication ====================
+
+var adminSessions = {};
+
+// Admin login
+app.post('/api/admin/login', function(req, res) {
+    var username = req.body.username;
+    var password = req.body.password;
+
+    if (!username || !password) {
+        return res.json({ success: false, message: 'نام کاربری و رمز عبور الزامی است' });
+    }
+
+    if (username !== config.ADMIN_USERNAME || password !== config.ADMIN_PASSWORD) {
+        return res.json({ success: false, message: 'نام کاربری یا رمز عبور اشتباه است' });
+    }
+
+    var token = generateToken();
+    adminSessions[token] = { username: username, loginTime: Date.now() };
+
+    res.json({ success: true, token: token, message: 'ورود موفق' });
+});
+
+// Admin check session
+app.get('/api/admin/check', function(req, res) {
+    var token = req.headers['authorization'];
+
+    if (!token || !adminSessions[token]) {
+        return res.json({ success: false, message: 'لطفاً وارد شوید' });
+    }
+
+    res.json({ success: true, username: adminSessions[token].username });
+});
+
+// Admin logout
+app.post('/api/admin/logout', function(req, res) {
+    var token = req.headers['authorization'];
+    if (token) {
+        delete adminSessions[token];
+    }
+    res.json({ success: true });
+});
+
+// Admin middleware
+function requireAdmin(req, res, next) {
+    var token = req.headers['authorization'];
+
+    if (!token || !adminSessions[token]) {
+        return res.json({ success: false, message: 'دسترسی ادمین نیاز است' });
+    }
+
+    next();
+}
+
+// ==================== Admin User Management ====================
+
+// Get all users
+app.get('/api/admin/users', requireAdmin, function(req, res) {
+    var users = loadUsers();
+    var userList = [];
+
+    for (var username in users) {
+        var user = users[username];
+        var configCount = user.configs ? Object.keys(user.configs).length : 0;
+
+        userList.push({
+            username: username,
+            email: user.email || '',
+            createdAt: user.createdAt,
+            configCount: configCount
+        });
+    }
+
+    // Sort by creation date (newest first)
+    userList.sort(function(a, b) {
+        return (b.createdAt || 0) - (a.createdAt || 0);
+    });
+
+    res.json({ success: true, users: userList, total: userList.length });
+});
+
+// Get user details
+app.get('/api/admin/users/:username', requireAdmin, function(req, res) {
+    var username = req.params.username;
+    var users = loadUsers();
+    var user = users[username];
+
+    if (!user) {
+        return res.json({ success: false, message: 'کاربر یافت نشد' });
+    }
+
+    res.json({
+        success: true,
+        user: {
+            username: username,
+            email: user.email || '',
+            createdAt: user.createdAt,
+            configs: user.configs || {}
+        }
+    });
+});
+
+// Add new user
+app.post('/api/admin/users', requireAdmin, function(req, res) {
+    var username = req.body.username;
+    var email = req.body.email;
+    var password = req.body.password;
+
+    if (!username || !password) {
+        return res.json({ success: false, message: 'نام کاربری و رمز عبور الزامی است' });
+    }
+
+    if (username.length < 3) {
+        return res.json({ success: false, message: 'نام کاربری باید حداقل 3 کاراکتر باشد' });
+    }
+
+    var users = loadUsers();
+
+    if (users[username]) {
+        return res.json({ success: false, message: 'این نام کاربری قبلاً ثبت شده' });
+    }
+
+    if (email) {
+        if (!isValidEmail(email)) {
+            return res.json({ success: false, message: 'فرمت ایمیل صحیح نیست' });
+        }
+
+        for (var u in users) {
+            if (users[u].email === email.toLowerCase()) {
+                return res.json({ success: false, message: 'این ایمیل قبلاً ثبت شده' });
+            }
+        }
+    }
+
+    users[username] = {
+        password: hashPassword(password),
+        email: email ? email.toLowerCase() : '',
+        createdAt: Date.now(),
+        configs: {}
+    };
+
+    saveUsers(users);
+
+    res.json({ success: true, message: 'کاربر با موفقیت ایجاد شد' });
+});
+
+// Reset user password
+app.post('/api/admin/users/:username/reset-password', requireAdmin, function(req, res) {
+    var username = req.params.username;
+    var newPassword = req.body.newPassword;
+
+    if (!newPassword) {
+        return res.json({ success: false, message: 'رمز عبور جدید الزامی است' });
+    }
+
+    if (newPassword.length < 4) {
+        return res.json({ success: false, message: 'رمز عبور باید حداقل 4 کاراکتر باشد' });
+    }
+
+    var users = loadUsers();
+
+    if (!users[username]) {
+        return res.json({ success: false, message: 'کاربر یافت نشد' });
+    }
+
+    users[username].password = hashPassword(newPassword);
+    saveUsers(users);
+
+    // Invalidate user sessions
+    for (var token in userSessions) {
+        if (userSessions[token] === username) {
+            delete userSessions[token];
+        }
+    }
+
+    res.json({ success: true, message: 'رمز عبور با موفقیت تغییر کرد' });
+});
+
+// Delete user
+app.delete('/api/admin/users/:username', requireAdmin, function(req, res) {
+    var username = req.params.username;
+
+    var users = loadUsers();
+
+    if (!users[username]) {
+        return res.json({ success: false, message: 'کاربر یافت نشد' });
+    }
+
+    delete users[username];
+    saveUsers(users);
+
+    // Invalidate user sessions
+    for (var token in userSessions) {
+        if (userSessions[token] === username) {
+            delete userSessions[token];
+        }
+    }
+
+    res.json({ success: true, message: 'کاربر با موفقیت حذف شد' });
+});
+
 // ==================== X-UI Panel Functions ====================
 
 async function loginToPanel() {
@@ -579,6 +780,10 @@ function generateConfigLink(inbound, client, protocol) {
 
 app.get('/', function(req, res) {
     res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
+app.get('/admin', function(req, res) {
+    res.sendFile(path.join(__dirname, 'public', 'admin.html'));
 });
 
 // ==================== Start Server ====================
